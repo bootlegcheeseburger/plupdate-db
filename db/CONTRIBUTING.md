@@ -48,7 +48,10 @@ Full spec in [`schema.json`](schema.json). The points that trip people up:
   Find a vendor's team ID by running
   `codesign -dvv /Library/Application\ Support/Avid/Audio/Plug-Ins/<plugin>.aaxplugin`
   and copying the `TeamIdentifier=` value. Maintainer-curated; do not
-  set without verifying.
+  set without verifying. The vendor-level value is the default for
+  every plugin in the file — individual plugins can override via the
+  per-plugin `signingTeamId` field when their signing team differs
+  (acquisitions, distribution umbrellas, legacy migrations).
 - **`drm`** is maintainer-curated. Leave it out.
 
 ## What we don't accept

@@ -82,6 +82,11 @@
           "type": ["array", "null"],
           "description": "Authorization methods accepted by this plugin. Multiple entries mean the plugin accepts any of them.",
           "items": { "$ref": "#/$defs/drmMethod" }
+        },
+        "signingTeamId": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Z0-9]{10}$",
+          "description": "Per-plugin override of the vendor's signingTeamId. Set ONLY when this specific plugin is signed by a different Apple Developer team than the rest of the vendor's catalog (acquisitions, distribution umbrellas, legacy migrations). Plugin-level takes precedence over vendor-level when present."
         }
       }
     },
