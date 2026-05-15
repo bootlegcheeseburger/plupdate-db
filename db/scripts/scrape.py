@@ -29,6 +29,13 @@ from scrapers.registry import all_scrapers  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 VENDORS_DIR = ROOT / "vendors"
 INDEX_FILE = VENDORS_DIR / "index.json"
+CLASSIFICATION_FILE = ROOT / ".scrape-classification.json"
+
+# A diff is a "bump" if and only if each per-plugin change touches only
+# these keys; anything else (added/removed plugin, vendor name change, DRM
+# change, notes/vendorPage change) counts as structural and requires human
+# review.
+BUMP_KEYS = {"latestVersion", "downloadURL"}
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("scrape")
@@ -60,16 +67,62 @@ def vendor_payload(scraper, releases: list) -> dict:
     }
 
 
-def write_vendor_file(scraper, releases: list, dry_run: bool) -> None:
+def write_vendor_file(scraper, releases: list, dry_run: bool) -> str:
+    """Write the vendor file and return a classification of the change.
+
+    Returns one of: "bumps", "structural", "unchanged".
+    """
     payload = vendor_payload(scraper, releases)
     path = VENDORS_DIR / f"{scraper.name}.json"
     text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    old_text = path.read_text(encoding="utf-8") if path.exists() else None
+    classification = classify_vendor_change(old_text, text)
     if dry_run:
-        log.info("--- %s (dry run) ---\n%s", path, text)
-        return
+        log.info("--- %s (dry run, %s) ---\n%s", path, classification, text)
+        return classification
     VENDORS_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
-    log.info("wrote %s (%d plugins)", path.relative_to(ROOT), len(payload["plugins"]))
+    log.info(
+        "wrote %s (%d plugins, %s)",
+        path.relative_to(ROOT),
+        len(payload["plugins"]),
+        classification,
+    )
+    return classification
+
+
+def classify_vendor_change(old_text, new_text: str) -> str:
+    if old_text is None:
+        return "structural"
+    if old_text == new_text:
+        return "unchanged"
+    try:
+        old = json.loads(old_text)
+        new = json.loads(new_text)
+    except json.JSONDecodeError:
+        return "structural"
+    return classify_payload_diff(old, new)
+
+
+def classify_payload_diff(old: dict, new: dict) -> str:
+    if old.get("vendor") != new.get("vendor"):
+        return "structural"
+    if old.get("homepage") != new.get("homepage"):
+        return "structural"
+
+    old_by_id = {p["bundleId"]: p for p in old.get("plugins", [])}
+    new_by_id = {p["bundleId"]: p for p in new.get("plugins", [])}
+    if set(old_by_id) != set(new_by_id):
+        return "structural"
+
+    for bid, op in old_by_id.items():
+        np = new_by_id[bid]
+        if op == np:
+            continue
+        differing = {k for k in set(op) | set(np) if op.get(k) != np.get(k)}
+        if not differing.issubset(BUMP_KEYS):
+            return "structural"
+    return "bumps"
 
 
 # --- index ----------------------------------------------------------------
@@ -116,6 +169,7 @@ def main() -> int:
             return 2
 
     failures = 0
+    classifications: dict[str, list[str]] = {"bumps": [], "structural": [], "unchanged": []}
     for s in scrapers:
         try:
             releases = list(s.scrape())
@@ -126,11 +180,47 @@ def main() -> int:
         if not releases:
             log.warning("%s: no releases scraped (skipping write)", s.name)
             continue
-        write_vendor_file(s, releases, args.dry_run)
+        kind = write_vendor_file(s, releases, args.dry_run)
+        classifications.setdefault(kind, []).append(s.name)
 
     if not args.dry_run:
+        # Index changes (slug add/remove) are structural; updatedAt alone is fine.
+        # Detect by comparing the set of slugs before/after.
+        old_slugs = _read_index_slugs()
         write_index()
+        new_slugs = _read_index_slugs()
+        if old_slugs != new_slugs:
+            classifications["structural"].append("__index__")
+        _write_classification(classifications)
     return 1 if failures else 0
+
+
+def _read_index_slugs() -> set[str]:
+    if not INDEX_FILE.exists():
+        return set()
+    try:
+        data = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+        return set(data.get("vendors", []))
+    except json.JSONDecodeError:
+        return set()
+
+
+def _write_classification(classifications: dict) -> None:
+    payload = {
+        "bumps": sorted(classifications.get("bumps", [])),
+        "structural": sorted(classifications.get("structural", [])),
+        "unchanged": sorted(classifications.get("unchanged", [])),
+    }
+    CLASSIFICATION_FILE.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    log.info(
+        "classification: bumps=%d structural=%d unchanged=%d",
+        len(payload["bumps"]),
+        len(payload["structural"]),
+        len(payload["unchanged"]),
+    )
 
 
 if __name__ == "__main__":

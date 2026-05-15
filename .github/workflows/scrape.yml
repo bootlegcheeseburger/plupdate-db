@@ -16,11 +16,6 @@ permissions:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        # Only applies to `run:` steps; the create-pull-request action below
-        # still operates from the repo root, which is what we want.
-        working-directory: db
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,9 +23,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: db/requirements.txt
-      - run: pip install -r requirements.txt
+      - working-directory: db
+        run: pip install -r requirements.txt
 
       - name: Run scrapers
+        working-directory: db
         run: |
           if [ -n "${{ inputs.only }}" ]; then
             python -m scripts.scrape --only "${{ inputs.only }}"
@@ -39,20 +36,63 @@ jobs:
           fi
 
       - name: Validate
+        working-directory: db
         run: python scripts/validate.py
 
+      - name: Classify diff
+        id: classify
+        working-directory: db
+        run: |
+          if [ ! -f .scrape-classification.json ]; then
+            echo "label=no-change" >> "$GITHUB_OUTPUT"
+            echo "auto_merge=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          structural=$(jq '.structural | length' .scrape-classification.json)
+          bumps=$(jq '.bumps | length' .scrape-classification.json)
+          if [ "$structural" -gt 0 ]; then
+            echo "label=needs-review" >> "$GITHUB_OUTPUT"
+            echo "auto_merge=false" >> "$GITHUB_OUTPUT"
+          elif [ "$bumps" -gt 0 ]; then
+            echo "label=auto-merge" >> "$GITHUB_OUTPUT"
+            echo "auto_merge=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "label=no-change" >> "$GITHUB_OUTPUT"
+            echo "auto_merge=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "summary: bumps=$bumps structural=$structural"
+
       - name: Open PR if changes
+        id: cpr
+        if: steps.classify.outputs.label != 'no-change'
         uses: peter-evans/create-pull-request@v6
         with:
           commit-message: "scrape: refresh vendor data"
-          title: "scrape: refresh vendor data"
+          title: "scrape: refresh vendor data (${{ steps.classify.outputs.label }})"
           body: |
             Automated scrape run.
 
-            Review the diff in `db/vendors/` for any unexpected changes
-            before merging. Merge will trigger a Pages deploy.
+            **Classification:** `${{ steps.classify.outputs.label }}`
+
+            - `auto-merge`: every diff is a `latestVersion` (or `downloadURL`)
+              change on an existing plugin. CI will merge automatically once
+              checks go green.
+            - `needs-review`: at least one structural change (new plugin, new
+              vendor, removed plugin, DRM change, vendor/homepage edit, or a
+              vendors/index.json membership change). A human should eyeball
+              the diff before merge.
+
+            See `db/.scrape-classification.json` in the run logs for the per-
+            vendor breakdown (it's gitignored, not committed).
           branch: scrape/refresh
           delete-branch: true
-          labels: data,automated
+          labels: data,automated,${{ steps.classify.outputs.label }}
           add-paths: |
             db/vendors/*.json
+
+      - name: Enable auto-merge on bumps-only PR
+        if: steps.classify.outputs.auto_merge == 'true' && steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-url }}"

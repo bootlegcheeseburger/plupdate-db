@@ -8,9 +8,15 @@ compatibility_date = "2025-01-01"
 binding = "RATE_LIMIT"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
-# Public env (not secret). Set the actual repo here once created.
+# Public env (not secret).
 [vars]
-GITHUB_REPO = "REPLACE_WITH_OWNER/plupdate-submissions"
+GITHUB_REPO = "bootlegcheeseburger/plupdate-submissions"
+PROMOTE_REPO = "bootlegcheeseburger/plupdate-db"
 
 # Secrets (set via CLI, never commit):
 #   npx wrangler secret put GITHUB_TOKEN
+#     fine-grained PAT, Issues:write on plupdate-submissions
+#   npx wrangler secret put PROMOTE_TOKEN
+#     fine-grained PAT, Contents:write + Pull requests:write on plupdate-db
+#   npx wrangler secret put ADMIN_TOKEN
+#     long random string used to auth /admin and /promote
