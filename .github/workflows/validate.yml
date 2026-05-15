@@ -3,8 +3,8 @@ name: validate-db
 on:
   # Always run on PRs to main. validate.py is fast (~12s) and required as
   # a branch-protection status check, so it needs to fire even when the PR
-  # only touches non-data paths (worker/, README, etc.) — otherwise the
-  # check sits "expected" forever and blocks merge.
+  # only touches non-data paths (README, etc.) - otherwise the check sits
+  # "expected" forever and blocks merge.
   pull_request:
   push:
     branches: [main]
