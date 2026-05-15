@@ -24,6 +24,10 @@ const RATE_MAX = 10;
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_SUBMISSIONS = 200;
 
+const SESSION_TTL_S = 12 * 60 * 60;
+const SESSION_COOKIE = "plupdate_admin";
+const SESSION_KV_PREFIX = "sess:";
+
 // Hidden HTML comment we embed in every issue body so dedupe lookups are
 // title-rename-proof.
 const BUNDLE_ID_MARKER = (id) => `<!-- bundleId: ${id} -->`;
@@ -42,26 +46,179 @@ export default {
       return handleSubmit(request, env);
     }
 
+    // Auth surface --------------------------------------------------------
+    // /admin/login (GET/POST) is the only unauthenticated admin route;
+    // everything else under /admin and /promote requires a valid session
+    // cookie. The admin token is typed into the login form once and never
+    // appears in URLs, history, server logs, or referer headers.
+    if (pathname === "/admin/login") {
+      return handleAdminLogin(request, env);
+    }
+    if (pathname === "/admin/logout") {
+      return handleAdminLogout(request, env);
+    }
+
     if (request.method === "GET" && pathname === "/admin") {
-      if (!checkAdminTokenQuery(url, env)) return unauthorized();
+      if (!(await checkAdminSession(request, env))) {
+        return redirect("/admin/login");
+      }
       return new Response(ADMIN_HTML, {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
 
     if (request.method === "GET" && pathname === "/admin/issues") {
-      if (!checkAdminTokenQuery(url, env)) return unauthorized();
+      if (!(await checkAdminSession(request, env))) return unauthorized();
       return handleAdminIssues(env);
     }
 
     if (request.method === "POST" && pathname === "/promote") {
-      if (!checkAdminTokenHeader(request, env)) return unauthorized();
+      if (!(await checkAdminSession(request, env))) return unauthorized();
       return handlePromote(request, env);
     }
 
     return new Response("Not found", { status: 404 });
   },
 };
+
+// --- /admin/login + sessions ---------------------------------------------
+
+async function handleAdminLogin(request, env) {
+  if (request.method === "GET") {
+    // If they already have a valid session, skip the form.
+    if (await checkAdminSession(request, env)) return redirect("/admin");
+    return loginPage(false);
+  }
+  if (request.method === "POST") {
+    let submitted = "";
+    try {
+      const form = await request.formData();
+      submitted = String(form.get("token") || "");
+    } catch {
+      return loginPage(true, 400);
+    }
+    if (!env.ADMIN_TOKEN || !timingSafeEqual(submitted, env.ADMIN_TOKEN)) {
+      return loginPage(true, 401);
+    }
+    if (!env.RATE_LIMIT) {
+      // KV must be bound for sessions; surface clearly rather than 500'ing later.
+      return new Response("session storage unavailable", { status: 500 });
+    }
+    const sid = randomSessionId();
+    await env.RATE_LIMIT.put(SESSION_KV_PREFIX + sid, "1", {
+      expirationTtl: SESSION_TTL_S,
+    });
+    return new Response(null, {
+      status: 303,
+      headers: {
+        Location: "/admin",
+        "Set-Cookie": sessionCookie(sid, SESSION_TTL_S),
+      },
+    });
+  }
+  return new Response("Method not allowed", { status: 405 });
+}
+
+async function handleAdminLogout(request, env) {
+  const sid = parseCookies(request).get(SESSION_COOKIE);
+  if (sid && env.RATE_LIMIT) {
+    await env.RATE_LIMIT.delete(SESSION_KV_PREFIX + sid);
+  }
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: "/admin/login",
+      "Set-Cookie": expiredSessionCookie(),
+    },
+  });
+}
+
+async function checkAdminSession(request, env) {
+  if (!env.RATE_LIMIT) return false;
+  const sid = parseCookies(request).get(SESSION_COOKIE);
+  if (!sid || !/^[A-Za-z0-9_-]{16,128}$/.test(sid)) return false;
+  const v = await env.RATE_LIMIT.get(SESSION_KV_PREFIX + sid);
+  return v === "1";
+}
+
+function randomSessionId() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64url(bytes);
+}
+
+function base64url(bytes) {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function sessionCookie(sid, ttlSeconds) {
+  return `${SESSION_COOKIE}=${sid}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${ttlSeconds}`;
+}
+
+function expiredSessionCookie() {
+  return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
+}
+
+function parseCookies(request) {
+  const map = new Map();
+  const header = request.headers.get("Cookie") || "";
+  for (const part of header.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx < 0) continue;
+    const k = part.slice(0, idx).trim();
+    const v = part.slice(idx + 1).trim();
+    if (k) map.set(k, v);
+  }
+  return map;
+}
+
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) {
+    r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return r === 0;
+}
+
+function redirect(location) {
+  return new Response(null, { status: 303, headers: { Location: location } });
+}
+
+function loginPage(showError, status = 200) {
+  const errBlock = showError
+    ? `<p class="err">Wrong token. Try again.</p>`
+    : "";
+  const html = `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>plupdate admin login</title>
+<style>
+  body { font: 14px/1.4 -apple-system, system-ui, sans-serif; max-width: 360px; margin: 6rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.2rem; margin-bottom: 1rem; }
+  form { display: flex; flex-direction: column; gap: 10px; }
+  input[type=password] { padding: 8px 10px; font: inherit; }
+  button { padding: 8px 12px; font: inherit; cursor: pointer; }
+  .err { color: #c33; margin-top: 0.5rem; }
+  .muted { color: #888; font-size: 12px; }
+</style></head><body>
+<h1>plupdate admin</h1>
+<form method="POST" action="/admin/login" autocomplete="off">
+  <label>Admin token<br>
+    <input type="password" name="token" autofocus required style="width:100%">
+  </label>
+  <button type="submit">Sign in</button>
+  ${errBlock}
+</form>
+<p class="muted">Session lasts 12h. Token never appears in URL.</p>
+</body></html>`;
+  return new Response(html, {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
+}
 
 // --- /submit ---------------------------------------------------------------
 
@@ -579,16 +736,6 @@ function b64decodeUtf8(b64) {
   return new TextDecoder().decode(bytes);
 }
 
-function checkAdminTokenHeader(request, env) {
-  const auth = request.headers.get("Authorization") || "";
-  return env.ADMIN_TOKEN && auth === `Bearer ${env.ADMIN_TOKEN}`;
-}
-
-function checkAdminTokenQuery(url, env) {
-  const t = url.searchParams.get("token");
-  return env.ADMIN_TOKEN && t === env.ADMIN_TOKEN;
-}
-
 function unauthorized() {
   return json({ error: "unauthorized" }, 401);
 }
@@ -622,7 +769,10 @@ const ADMIN_HTML = `<!doctype html>
 </style>
 </head>
 <body>
-<h1>plupdate-submissions inbox</h1>
+<header style="display:flex; align-items:baseline; gap:1rem; margin-bottom:0.5rem;">
+  <h1 style="margin:0;">plupdate-submissions inbox</h1>
+  <a href="/admin/logout" class="muted">Sign out</a>
+</header>
 <p class="muted">Pick a slug + trusted domain, hit Promote, and the Worker opens a PR on plupdate-db. Slug defaults to the second segment of the bundle id (e.g. <code>com.foo.Bar</code> -> <code>foo</code>); trusted domain defaults to <code>&lt;slug&gt;.com</code>. Fix either before promoting if wrong.</p>
 <div id="status" class="muted">Loading...</div>
 <table id="rows" hidden>
@@ -631,9 +781,8 @@ const ADMIN_HTML = `<!doctype html>
 </table>
 
 <script>
-const params = new URLSearchParams(location.search);
-const token = params.get("token");
-if (!token) { document.getElementById("status").textContent = "Missing ?token="; }
+// Auth is via HttpOnly session cookie set at /admin/login.
+// Same-origin fetches send the cookie automatically; no token in URLs or JS.
 
 function defaultSlug(bundleId) {
   // Heuristic: com.vendor.Plugin -> "vendor"
@@ -655,7 +804,11 @@ function parseBody(body) {
 }
 
 async function loadIssues() {
-  const r = await fetch("/admin/issues?token=" + encodeURIComponent(token));
+  const r = await fetch("/admin/issues", { credentials: "same-origin" });
+  if (r.status === 401) {
+    location.href = "/admin/login";
+    return;
+  }
   if (!r.ok) {
     document.getElementById("status").textContent = "Failed to load: " + r.status;
     return;
@@ -695,10 +848,8 @@ async function loadIssues() {
       const trustedDomainVal = domainInput.value.trim();
       const res = await fetch("/promote", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + token,
-        },
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bundleId: i.bundleId,
           vendorSlug: slugVal,
@@ -708,6 +859,10 @@ async function loadIssues() {
           issueNumber: i.issueNumber,
         }),
       });
+      if (res.status === 401) {
+        location.href = "/admin/login";
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         msg.textContent = "OK: " + (data.pr || "PR opened");
@@ -728,7 +883,7 @@ function escape(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c]));
 }
 
-if (token) loadIssues();
+loadIssues();
 </script>
 </body>
 </html>
