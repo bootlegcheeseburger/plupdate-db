@@ -6,7 +6,7 @@ compatibility_date = "2025-01-01"
 # Run once: `npx wrangler kv namespace create RATE_LIMIT` and paste the id below.
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "eec292e7ec64430cba42f7b1bea819bc"
 
 # Public env (not secret).
 [vars]
