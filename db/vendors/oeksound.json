@@ -1,6 +1,10 @@
 {
   "vendor": "oeksound",
   "homepage": "https://oeksound.com/",
+  "trustedDomain": "oeksound.com",
+  "allowedDownloadHosts": [
+    "oeksound.ams3.cdn.digitaloceanspaces.com"
+  ],
   "plugins": [
     {
       "bundleId": "com.oeksound.bloom",

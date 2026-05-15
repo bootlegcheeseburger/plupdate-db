@@ -1,6 +1,7 @@
 {
   "vendor": "Acme Plugins",
   "homepage": "https://example.invalid/acme",
+  "trustedDomain": "example.invalid",
   "plugins": [
     {
       "bundleId": "com.acme.SuperReverb",

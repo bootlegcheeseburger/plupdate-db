@@ -5,7 +5,7 @@
   "description": "One file per vendor under vendors/<slug>.json. Slug must match filename.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["vendor", "plugins"],
+  "required": ["vendor", "trustedDomain", "plugins"],
   "properties": {
     "vendor": {
       "type": "string",
@@ -17,6 +17,17 @@
       "type": ["string", "null"],
       "format": "uri",
       "description": "Vendor's homepage. Optional but recommended."
+    },
+    "trustedDomain": {
+      "$ref": "#/$defs/domain",
+      "description": "Canonical registrable domain for the vendor (e.g. 'klevgrand.com'). Every vendorPage host MUST equal this or be a subdomain. Every downloadURL host MUST equal this, be a subdomain, or appear in allowedDownloadHosts."
+    },
+    "allowedDownloadHosts": {
+      "type": ["array", "null"],
+      "description": "Exact hostnames (not subdomains) that may serve downloadURLs in addition to trustedDomain. Use for legitimate CDN/object-store hosts (e.g. 'vendor.ams3.cdn.digitaloceanspaces.com'). Reviewed manually before merge.",
+      "items": { "$ref": "#/$defs/host" },
+      "uniqueItems": true,
+      "maxItems": 20
     },
     "plugins": {
       "type": "array",
@@ -68,6 +79,18 @@
           "items": { "$ref": "#/$defs/drmMethod" }
         }
       }
+    },
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+      "minLength": 4,
+      "maxLength": 253
+    },
+    "host": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+      "minLength": 4,
+      "maxLength": 253
     },
     "drmMethod": {
       "type": "object",

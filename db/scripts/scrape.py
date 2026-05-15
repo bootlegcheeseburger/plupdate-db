@@ -49,10 +49,15 @@ def _normalize_url(u):
 # --- vendor files ---------------------------------------------------------
 
 def vendor_payload(scraper, releases: list) -> dict:
-    return {
+    payload: dict = {
         "vendor": scraper.vendor,
         "homepage": scraper.homepage,
-        "plugins": [
+        "trustedDomain": scraper.trusted_domain,
+    }
+    allowed = list(getattr(scraper, "allowed_download_hosts", []) or [])
+    if allowed:
+        payload["allowedDownloadHosts"] = allowed
+    payload["plugins"] = [
             {
                 "bundleId": r.bundle_id,
                 "name": r.name,
@@ -63,8 +68,8 @@ def vendor_payload(scraper, releases: list) -> dict:
                 "drm": r.drm,
             }
             for r in sorted(releases, key=lambda r: r.name.lower())
-        ],
-    }
+        ]
+    return payload
 
 
 def write_vendor_file(scraper, releases: list, dry_run: bool) -> str:

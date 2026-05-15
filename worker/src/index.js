@@ -256,7 +256,7 @@ async function handlePromote(request, env) {
   } catch {
     return json({ error: "invalid json" }, 400);
   }
-  const { bundleId, vendorSlug, name } = body || {};
+  const { bundleId, vendorSlug, name, trustedDomain } = body || {};
   if (
     typeof bundleId !== "string" ||
     typeof vendorSlug !== "string" ||
@@ -266,6 +266,12 @@ async function handlePromote(request, env) {
   }
   if (!/^[a-z0-9-]+$/.test(vendorSlug) || vendorSlug.startsWith("_")) {
     return json({ error: "invalid vendor slug" }, 400);
+  }
+  if (
+    trustedDomain != null &&
+    !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(trustedDomain)
+  ) {
+    return json({ error: "invalid trustedDomain" }, 400);
   }
 
   try {
@@ -288,6 +294,7 @@ async function scaffoldPromotionPR(env, input) {
     downloadURL,
     notes,
     issueNumber,
+    trustedDomain,
   } = input;
 
   const vendorPath = `db/vendors/${vendorSlug}.json`;
@@ -317,9 +324,15 @@ async function scaffoldPromotionPR(env, input) {
     }
   } else {
     isNewVendor = true;
+    if (!trustedDomain) {
+      throw new Error(
+        "trustedDomain is required when creating a new vendor file",
+      );
+    }
     vendorJson = {
       vendor: vendor || vendorSlug,
-      homepage: null,
+      homepage: `https://${trustedDomain}/`,
+      trustedDomain,
       plugins: [],
     };
   }
@@ -610,10 +623,10 @@ const ADMIN_HTML = `<!doctype html>
 </head>
 <body>
 <h1>plupdate-submissions inbox</h1>
-<p class="muted">Pick a slug, hit Promote, and the Worker opens a PR on plupdate-db. Slug defaults to the second segment of the bundle id (e.g. <code>com.foo.Bar</code> -> <code>foo</code>); fix it before promoting if wrong.</p>
+<p class="muted">Pick a slug + trusted domain, hit Promote, and the Worker opens a PR on plupdate-db. Slug defaults to the second segment of the bundle id (e.g. <code>com.foo.Bar</code> -> <code>foo</code>); trusted domain defaults to <code>&lt;slug&gt;.com</code>. Fix either before promoting if wrong.</p>
 <div id="status" class="muted">Loading...</div>
 <table id="rows" hidden>
-  <thead><tr><th>Issue</th><th>Bundle</th><th>Vendor slug</th><th></th></tr></thead>
+  <thead><tr><th>Issue</th><th>Bundle</th><th>Vendor slug</th><th>Trusted domain</th><th></th></tr></thead>
   <tbody></tbody>
 </table>
 
@@ -626,6 +639,12 @@ function defaultSlug(bundleId) {
   // Heuristic: com.vendor.Plugin -> "vendor"
   const parts = (bundleId || "").split(".");
   return (parts[1] || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+}
+
+function defaultTrustedDomain(slug) {
+  // Heuristic: a vendor with slug "foo" most likely lives at "foo.com".
+  // Maintainer overrides in the input when wrong.
+  return slug ? slug + ".com" : "";
 }
 
 function parseBody(body) {
@@ -647,20 +666,33 @@ async function loadIssues() {
   for (const i of issues) {
     if (!i.bundleId) continue;
     const { name, observedVersion } = parseBody(i.body);
+    const slug = defaultSlug(i.bundleId);
     const tr = document.createElement("tr");
     tr.innerHTML = \`
       <td><a href="\${i.htmlUrl}" target="_blank">#\${i.issueNumber}</a><div class="muted">\${i.createdAt.slice(0,10)}</div></td>
       <td><strong>\${escape(name) || "(unknown)"}</strong><div class="muted"><code>\${escape(i.bundleId)}</code><br>v\${escape(observedVersion) || "?"}</div></td>
-      <td><input type="text" value="\${escape(defaultSlug(i.bundleId))}" data-field="vendorSlug"></td>
+      <td><input type="text" value="\${escape(slug)}" data-field="vendorSlug"></td>
+      <td><input type="text" value="\${escape(defaultTrustedDomain(slug))}" data-field="trustedDomain"></td>
       <td><button>Promote</button><div class="msg muted"></div></td>
     \`;
+    // Keep trustedDomain in sync with slug edits until user diverges.
+    const slugInput = tr.querySelector("[data-field=vendorSlug]");
+    const domainInput = tr.querySelector("[data-field=trustedDomain]");
+    let domainEdited = false;
+    domainInput.addEventListener("input", () => { domainEdited = true; });
+    slugInput.addEventListener("input", () => {
+      if (!domainEdited) {
+        domainInput.value = defaultTrustedDomain(slugInput.value.trim());
+      }
+    });
     const btn = tr.querySelector("button");
     const msg = tr.querySelector(".msg");
     btn.onclick = async () => {
       btn.disabled = true;
       msg.textContent = "Working...";
       msg.className = "msg muted";
-      const slug = tr.querySelector("[data-field=vendorSlug]").value.trim();
+      const slugVal = slugInput.value.trim();
+      const trustedDomainVal = domainInput.value.trim();
       const res = await fetch("/promote", {
         method: "POST",
         headers: {
@@ -669,7 +701,8 @@ async function loadIssues() {
         },
         body: JSON.stringify({
           bundleId: i.bundleId,
-          vendorSlug: slug,
+          vendorSlug: slugVal,
+          trustedDomain: trustedDomainVal,
           name,
           observedVersion,
           issueNumber: i.issueNumber,

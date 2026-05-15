@@ -29,6 +29,8 @@ class KlevgrandScraper:
     name = "klevgrand"
     vendor = VENDOR
     homepage = "https://klevgrand.com/"
+    trusted_domain = "klevgrand.com"
+    allowed_download_hosts: list[str] = []
 
     def scrape(self) -> Iterable[ScrapedRelease]:
         seen: set[str] = set()

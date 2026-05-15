@@ -1,6 +1,7 @@
 {
   "vendor": "LiquidSonics",
   "homepage": "https://www.liquidsonics.com/",
+  "trustedDomain": "liquidsonics.com",
   "plugins": [
     {
       "bundleId": "com.liquidsonics.cinematic-rooms",

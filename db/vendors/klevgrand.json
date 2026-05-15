@@ -1,6 +1,7 @@
 {
   "vendor": "Klevgrand",
   "homepage": "https://klevgrand.com/",
+  "trustedDomain": "klevgrand.com",
   "plugins": [
     {
       "bundleId": "com.klevgrand.Brusfri",

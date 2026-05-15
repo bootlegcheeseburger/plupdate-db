@@ -29,9 +29,13 @@ class ScrapedRelease:
 
 
 class Scraper(Protocol):
-    name: str       # slug used as filename: data/vendors/<name>.json
-    vendor: str     # display name for the vendor file's "vendor" field
-    homepage: str   # vendor homepage URL
+    name: str               # slug used as filename: vendors/<name>.json
+    vendor: str             # display name for the vendor file's "vendor" field
+    homepage: str           # vendor homepage URL
+    trusted_domain: str     # canonical registrable domain (e.g. "klevgrand.com")
+    # Extra hostnames allowed to serve downloads (CDN, object store, etc.).
+    # Default empty; override per scraper when the vendor uses an off-domain host.
+    allowed_download_hosts: list[str]
     def scrape(self) -> Iterable[ScrapedRelease]: ...
 
 

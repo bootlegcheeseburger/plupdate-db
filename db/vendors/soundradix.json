@@ -1,6 +1,7 @@
 {
   "vendor": "Sound Radix",
   "homepage": "https://www.soundradix.com/",
+  "trustedDomain": "soundradix.com",
   "plugins": [
     {
       "bundleId": "com.soundradix.AutoAlign",

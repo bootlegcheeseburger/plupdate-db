@@ -52,6 +52,13 @@ class SampleScraper:
     name = "_sample"          # filename slug; matches scrapers/_sample.py
     vendor = VENDOR
     homepage = HOMEPAGE
+    # Canonical registrable domain for this vendor. Every vendorPage host must
+    # equal this or be a subdomain. Every downloadURL host must equal this,
+    # be a subdomain, or appear in allowed_download_hosts below.
+    trusted_domain = "example.invalid"
+    # Extra hostnames allowed for downloads (CDN, object store, etc.).
+    # Leave empty if the vendor only serves from trusted_domain or subdomains.
+    allowed_download_hosts: list[str] = []
 
     def scrape(self) -> Iterable[ScrapedRelease]:
         html = fetch(DOWNLOADS_URL)

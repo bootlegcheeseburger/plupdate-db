@@ -39,6 +39,10 @@ class LiquidSonicsScraper:
     name = "liquidsonics"
     vendor = VENDOR
     homepage = "https://www.liquidsonics.com/"
+    trusted_domain = "liquidsonics.com"
+    # Downloads go through www.liquidsonics.com/dl/serve.php (a redirector on
+    # the trusted domain), so no extra hosts are needed.
+    allowed_download_hosts: list[str] = []
 
     def scrape(self) -> Iterable[ScrapedRelease]:
         html = fetch(DOWNLOADS_URL)

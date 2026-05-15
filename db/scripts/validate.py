@@ -12,6 +12,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 try:
     from jsonschema import Draft202012Validator
@@ -26,6 +27,106 @@ INDEX_FILE = VENDORS_DIR / "index.json"
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("validate")
+
+
+def _host_matches_domain(host: str, domain: str) -> bool:
+    """True if host equals domain or is a proper subdomain.
+
+    Uses suffix match anchored on a leading '.' so 'evilfoo.com' does not
+    match 'foo.com'.
+    """
+    h = host.lower()
+    d = domain.lower()
+    return h == d or h.endswith("." + d)
+
+
+def _check_url_security(name: str, data: dict) -> int:
+    """Enforce that every vendorPage/downloadURL is on a trusted host."""
+    trusted = data.get("trustedDomain")
+    allowed = data.get("allowedDownloadHosts") or []
+    allowed_set = {h.lower() for h in allowed}
+    homepage = data.get("homepage")
+
+    errors = 0
+
+    if not trusted:
+        # schema check will already have flagged this; nothing more to do.
+        return 0
+
+    # Homepage, if present, must live on the trusted domain.
+    if homepage:
+        try:
+            u = urlparse(homepage)
+        except Exception as e:
+            log.error("%s: homepage parse error: %s", name, e)
+            return 1
+        if u.scheme != "https":
+            log.error("%s: homepage must use https:// — got %r", name, homepage)
+            errors += 1
+        if u.hostname and not _host_matches_domain(u.hostname, trusted):
+            log.error(
+                "%s: homepage host %r is not on trustedDomain %r",
+                name, u.hostname, trusted,
+            )
+            errors += 1
+
+    for i, p in enumerate(data.get("plugins", [])):
+        loc = f"plugins/{i} ({p.get('bundleId', '?')})"
+
+        vp = p.get("vendorPage")
+        if vp:
+            errors += _check_vendor_page_url(name, loc, vp, trusted)
+
+        du = p.get("downloadURL")
+        if du:
+            errors += _check_download_url(name, loc, du, trusted, allowed_set)
+
+    return errors
+
+
+def _check_vendor_page_url(name: str, loc: str, url: str, trusted: str) -> int:
+    try:
+        u = urlparse(url)
+    except Exception as e:
+        log.error("%s: %s: vendorPage parse error: %s", name, loc, e)
+        return 1
+    errors = 0
+    if u.scheme != "https":
+        log.error("%s: %s: vendorPage must use https:// — got %r", name, loc, url)
+        errors += 1
+    host = u.hostname or ""
+    if not _host_matches_domain(host, trusted):
+        log.error(
+            "%s: %s: vendorPage host %r is not on trustedDomain %r",
+            name, loc, host, trusted,
+        )
+        errors += 1
+    return errors
+
+
+def _check_download_url(
+    name: str, loc: str, url: str, trusted: str, allowed: set[str]
+) -> int:
+    try:
+        u = urlparse(url)
+    except Exception as e:
+        log.error("%s: %s: downloadURL parse error: %s", name, loc, e)
+        return 1
+    errors = 0
+    if u.scheme != "https":
+        log.error("%s: %s: downloadURL must use https:// — got %r", name, loc, url)
+        errors += 1
+    host = (u.hostname or "").lower()
+    if _host_matches_domain(host, trusted):
+        return errors
+    if host in allowed:
+        return errors
+    log.error(
+        "%s: %s: downloadURL host %r is not on trustedDomain %r and not in "
+        "allowedDownloadHosts. Add it explicitly if it's a legitimate CDN.",
+        name, loc, host, trusted,
+    )
+    return errors + 1
 
 
 def main() -> int:
@@ -72,6 +173,8 @@ def main() -> int:
                 errors += 1
             else:
                 seen_bundles[bid] = f.name
+
+        errors += _check_url_security(f.name, data)
 
     # vendors/_sample.json — schema-only check so contributors copying from a
     # broken template don't waste their time. Excluded from uniqueness checks

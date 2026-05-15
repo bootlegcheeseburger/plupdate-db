@@ -36,6 +36,10 @@ class SoundRadixScraper:
     name = "soundradix"
     vendor = VENDOR
     homepage = "https://www.soundradix.com/"
+    trusted_domain = "soundradix.com"
+    # Installers live on assets.soundradix.com (subdomain of soundradix.com),
+    # which the trusted-domain rule already covers.
+    allowed_download_hosts: list[str] = []
 
     def scrape(self) -> Iterable[ScrapedRelease]:
         html = fetch(DOWNLOADS_URL)

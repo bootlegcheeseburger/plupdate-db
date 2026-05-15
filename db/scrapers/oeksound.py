@@ -40,6 +40,9 @@ class OeksoundScraper:
     name = "oeksound"
     vendor = VENDOR
     homepage = "https://oeksound.com/"
+    trusted_domain = "oeksound.com"
+    # oeksound serves installers from a DigitalOcean Spaces bucket.
+    allowed_download_hosts = ["oeksound.ams3.cdn.digitaloceanspaces.com"]
 
     def scrape(self) -> Iterable[ScrapedRelease]:
         html = fetch(DOWNLOADS_URL)
