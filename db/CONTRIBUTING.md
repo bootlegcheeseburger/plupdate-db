@@ -31,27 +31,19 @@ Full spec in [`schema.json`](schema.json). The points that trip people up:
   point a vendor's page at an off-domain host will be rejected.
 - **`vendorPage`** should link to the product page that offers the
   download, not a generic catalog page. Must be on `trustedDomain` or
-  a subdomain. https only.
-- **`downloadURL`** is optional. Must be on `trustedDomain` (or a
-  subdomain), *or* an exact host listed in `allowedDownloadHosts`.
-  Only set it when the vendor serves the installer directly - no login
-  wall, no marketing redirect. https only.
-- **`allowedDownloadHosts`** is an optional list of exact hostnames
-  that may serve downloads for legitimate CDN/object-store cases
-  (e.g. `vendor.ams3.cdn.digitaloceanspaces.com`). Add a host only
-  after manually verifying the vendor actually uses it. Subdomain
-  matching does *not* apply - each host is listed verbatim.
+  a subdomain. https only. This is the per-plugin "where to get the
+  update" pointer.
 - **`signingTeamId`** is the vendor's Apple Developer Team ID (10
-  uppercase alphanumeric chars, e.g. `Q22ABC3JE7`). Optional. When
-  present, the app verifies the installed plugin's code signature and
-  shows a warning on the row if the installed team ID doesn't match.
-  Find a vendor's team ID by running
+  uppercase alphanumeric chars, e.g. `Q22ABC3JE7`). Optional, but
+  recommended. When present, the app verifies the installed plugin's
+  code signature and shows a warning on the row if the installed team
+  ID doesn't match. Find a vendor's team ID by running
   `codesign -dvv /Library/Application\ Support/Avid/Audio/Plug-Ins/<plugin>.aaxplugin`
   and copying the `TeamIdentifier=` value. Maintainer-curated; do not
-  set without verifying. The vendor-level value is the default for
-  every plugin in the file — individual plugins can override via the
-  per-plugin `signingTeamId` field when their signing team differs
-  (acquisitions, distribution umbrellas, legacy migrations).
+  set without verifying. **Vendor-level only** — if a vendor's catalog
+  spans multiple Apple Developer teams (acquisitions, distribution
+  umbrellas, legacy migrations), split it into separate vendor files
+  rather than mixing teams in one file.
 - **`drm`** is maintainer-curated. Leave it out.
 
 ## What we don't accept
