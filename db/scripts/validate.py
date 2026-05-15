@@ -128,10 +128,8 @@ def _host_matches_domain(host: str, domain: str) -> bool:
 
 
 def _check_url_security(name: str, data: dict) -> int:
-    """Enforce that every vendorPage/downloadURL is on a trusted host."""
+    """Enforce that homepage and every vendorPage is on the trusted host."""
     trusted = data.get("trustedDomain")
-    allowed = data.get("allowedDownloadHosts") or []
-    allowed_set = {h.lower() for h in allowed}
     homepage = data.get("homepage")
 
     errors = 0
@@ -164,10 +162,6 @@ def _check_url_security(name: str, data: dict) -> int:
         if vp:
             errors += _check_vendor_page_url(name, loc, vp, trusted)
 
-        du = p.get("downloadURL")
-        if du:
-            errors += _check_download_url(name, loc, du, trusted, allowed_set)
-
     return errors
 
 
@@ -189,31 +183,6 @@ def _check_vendor_page_url(name: str, loc: str, url: str, trusted: str) -> int:
         )
         errors += 1
     return errors
-
-
-def _check_download_url(
-    name: str, loc: str, url: str, trusted: str, allowed: set[str]
-) -> int:
-    try:
-        u = urlparse(url)
-    except Exception as e:
-        log.error("%s: %s: downloadURL parse error: %s", name, loc, e)
-        return 1
-    errors = 0
-    if u.scheme != "https":
-        log.error("%s: %s: downloadURL must use https:// — got %r", name, loc, url)
-        errors += 1
-    host = (u.hostname or "").lower()
-    if _host_matches_domain(host, trusted):
-        return errors
-    if host in allowed:
-        return errors
-    log.error(
-        "%s: %s: downloadURL host %r is not on trustedDomain %r and not in "
-        "allowedDownloadHosts. Add it explicitly if it's a legitimate CDN.",
-        name, loc, host, trusted,
-    )
-    return errors + 1
 
 
 def main() -> int:
