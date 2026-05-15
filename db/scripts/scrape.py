@@ -57,6 +57,9 @@ def vendor_payload(scraper, releases: list) -> dict:
     allowed = list(getattr(scraper, "allowed_download_hosts", []) or [])
     if allowed:
         payload["allowedDownloadHosts"] = allowed
+    team_id = getattr(scraper, "signing_team_id", None)
+    if team_id:
+        payload["signingTeamId"] = team_id
     payload["plugins"] = [
             {
                 "bundleId": r.bundle_id,

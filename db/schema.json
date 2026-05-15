@@ -29,6 +29,11 @@
       "uniqueItems": true,
       "maxItems": 20
     },
+    "signingTeamId": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Z0-9]{10}$",
+      "description": "Apple Developer Team ID expected to sign every plugin from this vendor (10 uppercase alphanumeric chars). When present, the app verifies the installed plugin's code signature and warns on mismatch. Maintainer-curated; do not set unless you've inspected an installed binary."
+    },
     "plugins": {
       "type": "array",
       "minItems": 1,
