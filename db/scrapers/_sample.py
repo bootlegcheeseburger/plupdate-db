@@ -59,6 +59,10 @@ class SampleScraper:
     # Extra hostnames allowed for downloads (CDN, object store, etc.).
     # Leave empty if the vendor only serves from trusted_domain or subdomains.
     allowed_download_hosts: list[str] = []
+    # Apple Developer Team ID expected to sign this vendor's plugins
+    # (10 uppercase alphanumeric chars). Leave as None until confirmed by
+    # inspecting an installed bundle's `codesign -dvv` output.
+    signing_team_id: str | None = None
 
     def scrape(self) -> Iterable[ScrapedRelease]:
         html = fetch(DOWNLOADS_URL)

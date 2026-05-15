@@ -36,6 +36,11 @@ class Scraper(Protocol):
     # Extra hostnames allowed to serve downloads (CDN, object store, etc.).
     # Default empty; override per scraper when the vendor uses an off-domain host.
     allowed_download_hosts: list[str]
+    # Apple Developer Team ID expected to sign this vendor's plugins (10
+    # uppercase alphanumeric chars). Optional; leave as None until you've
+    # confirmed by inspecting an installed bundle's signature. When set,
+    # the app warns end users on mismatch with the installed plugin.
+    signing_team_id: Optional[str]
     def scrape(self) -> Iterable[ScrapedRelease]: ...
 
 

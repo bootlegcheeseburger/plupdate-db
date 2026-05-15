@@ -22,7 +22,9 @@ Full spec in [`schema.json`](schema.json). The points that trip people up:
 - **`bundleId`** must match `CFBundleIdentifier` in the plugin's
   `Info.plist` exactly. Wrong bundle IDs are the #1 reason a plugin
   shows as Unrecognized. The Plupdate app exposes the installed bundle
-  ID in its info popover (Copy ID button).
+  ID in its info popover (Copy ID button). Once an entry is in the DB,
+  treat its `bundleId` as immutable - if a vendor genuinely renames the
+  bundle, add a new entry rather than mutating the existing one.
 - **`trustedDomain`** is the vendor's canonical registrable domain
   (e.g. `klevgrand.com`). Every `vendorPage` URL must live on this
   domain or a subdomain - this is enforced in CI. PRs that try to
@@ -39,6 +41,14 @@ Full spec in [`schema.json`](schema.json). The points that trip people up:
   (e.g. `vendor.ams3.cdn.digitaloceanspaces.com`). Add a host only
   after manually verifying the vendor actually uses it. Subdomain
   matching does *not* apply - each host is listed verbatim.
+- **`signingTeamId`** is the vendor's Apple Developer Team ID (10
+  uppercase alphanumeric chars, e.g. `Q22ABC3JE7`). Optional. When
+  present, the app verifies the installed plugin's code signature and
+  shows a warning on the row if the installed team ID doesn't match.
+  Find a vendor's team ID by running
+  `codesign -dvv /Library/Application\ Support/Avid/Audio/Plug-Ins/<plugin>.aaxplugin`
+  and copying the `TeamIdentifier=` value. Maintainer-curated; do not
+  set without verifying.
 - **`drm`** is maintainer-curated. Leave it out.
 
 ## What we don't accept
