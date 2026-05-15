@@ -1,0 +1,38 @@
+{
+  "vendor": "oeksound",
+  "homepage": "https://oeksound.com/",
+  "plugins": [
+    {
+      "bundleId": "com.oeksound.bloom",
+      "name": "bloom",
+      "latestVersion": "1.1.2",
+      "vendorPage": "https://oeksound.com/plugins/bloom",
+      "downloadURL": "https://oeksound.ams3.cdn.digitaloceanspaces.com/bloom_v1.1.2_macos.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.oeksound.soothe",
+      "name": "soothe",
+      "latestVersion": "1.5.1",
+      "vendorPage": "https://oeksound.com/plugins/soothe-live",
+      "downloadURL": "https://oeksound.ams3.cdn.digitaloceanspaces.com/soothe_v151_Mac.dmg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.oeksound.soothe2",
+      "name": "soothe2",
+      "latestVersion": "1.3.3",
+      "vendorPage": "https://oeksound.com/plugins/soothe2",
+      "downloadURL": "https://oeksound.ams3.cdn.digitaloceanspaces.com/soothe2_v133_Mac.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.oeksound.spiff",
+      "name": "spiff",
+      "latestVersion": "1.4.4",
+      "vendorPage": "https://oeksound.com/plugins/spiff",
+      "downloadURL": "https://oeksound.ams3.cdn.digitaloceanspaces.com/spiff_v144_Mac.pkg",
+      "notes": null
+    }
+  ]
+}

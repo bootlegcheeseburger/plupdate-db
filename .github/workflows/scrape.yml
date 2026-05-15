@@ -1,0 +1,58 @@
+name: scrape
+
+on:
+  schedule:
+    - cron: "17 7 * * *"  # 07:17 UTC daily — staggered to avoid GH peak
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Run a single scraper by name (optional)"
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # Only applies to `run:` steps; the create-pull-request action below
+        # still operates from the repo root, which is what we want.
+        working-directory: db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: db/requirements.txt
+      - run: pip install -r requirements.txt
+
+      - name: Run scrapers
+        run: |
+          if [ -n "${{ inputs.only }}" ]; then
+            python -m scripts.scrape --only "${{ inputs.only }}"
+          else
+            python -m scripts.scrape
+          fi
+
+      - name: Validate
+        run: python scripts/validate.py
+
+      - name: Open PR if changes
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "scrape: refresh vendor data"
+          title: "scrape: refresh vendor data"
+          body: |
+            Automated scrape run.
+
+            Review the diff in `db/vendors/` for any unexpected changes
+            before merging. Merge will trigger a Pages deploy.
+          branch: scrape/refresh
+          delete-branch: true
+          labels: data,automated
+          add-paths: |
+            db/vendors/*.json

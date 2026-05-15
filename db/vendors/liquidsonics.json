@@ -1,0 +1,102 @@
+{
+  "vendor": "LiquidSonics",
+  "homepage": "https://www.liquidsonics.com/",
+  "plugins": [
+    {
+      "bundleId": "com.liquidsonics.cinematic-rooms",
+      "name": "Cinematic Rooms",
+      "latestVersion": "1.3.9",
+      "vendorPage": "https://www.liquidsonics.com/software/cinematic-rooms/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/liquidsonics/software/cinematic-rooms/mac/Cinematic_Rooms-v1.3.9-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.cinematic-rooms.professional",
+      "name": "Cinematic Rooms Professional",
+      "latestVersion": "1.3.9",
+      "vendorPage": "https://www.liquidsonics.com/software/cinematic-rooms/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/liquidsonics/software/cinematic-rooms/mac/Cinematic_Rooms_Professional-v1.3.9-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.HDCart",
+      "name": "HD Cart",
+      "latestVersion": "1.3.8",
+      "vendorPage": "https://www.liquidsonics.com/software/hd-cart/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/reverbfoundry/downloads/hd_cart/mac/HD_Cart-v1.3.8-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.Illusion",
+      "name": "Illusion",
+      "latestVersion": "1.4.6",
+      "vendorPage": "https://www.liquidsonics.com/software/illusion/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/liquidsonics/software/illusion/mac/Illusion-v1.4.6-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.LustrousPlates",
+      "name": "Lustrous Plates",
+      "latestVersion": "1.3.7",
+      "vendorPage": "https://www.liquidsonics.com/software/lustrous-plates/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/liquidsonics/software/lustrous-plates/mac/Lustrous_Plates-v1.3.7-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.LustrousPlatesSurround",
+      "name": "Lustrous Plates Surround",
+      "latestVersion": "1.3.7",
+      "vendorPage": "https://www.liquidsonics.com/software/lustrous-plates-surround/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/liquidsonics/software/lustrous-plates/mac/Lustrous_Plates_Surround-v1.3.7-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.M7Link",
+      "name": "M7 Link",
+      "latestVersion": "1.2.8",
+      "vendorPage": "https://www.liquidsonics.com/software/m7-link/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/reverbfoundry/downloads/m7_link/mac/M7_Link-v1.2.8-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.Reverberate3",
+      "name": "Reverberate 3",
+      "latestVersion": "3.4.6",
+      "vendorPage": "https://www.liquidsonics.com/software/reverberate-3/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/liquidsonics/software/reverberate-3/mac/Reverberate-v3.4.6-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.SeventhHeaven",
+      "name": "Seventh Heaven",
+      "latestVersion": "1.5.8",
+      "vendorPage": "https://www.liquidsonics.com/software/seventh-heaven/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/liquidsonics/software/seventh-heaven/mac/v1.5.8/Seventh_Heaven-v1.5.8-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.SeventhHeaven_Professional",
+      "name": "Seventh Heaven Professional",
+      "latestVersion": "1.5.8",
+      "vendorPage": "https://www.liquidsonics.com/software/seventh-heaven-professional/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/liquidsonics/software/seventh-heaven-professional/mac/v1.5.8/Seventh_Heaven_Professional-Complete_v1.5.8-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.TaiChi",
+      "name": "Tai Chi",
+      "latestVersion": "1.6.2",
+      "vendorPage": "https://www.liquidsonics.com/software/tai-chi/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/reverbfoundry/downloads/tai_chi/mac/Tai_Chi-v1.6.2-macOS.pkg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.liquidsonics.TaiChiLite",
+      "name": "Tai Chi Lite",
+      "latestVersion": "1.6.2",
+      "vendorPage": "https://www.liquidsonics.com/software/tai-chi/",
+      "downloadURL": "https://www.liquidsonics.com/dl/serve.php?link=https://us-east-1.linodeobjects.com/reverbfoundry/downloads/tai_chi/mac/Tai_Chi_Lite-v1.6.2-macOS.pkg",
+      "notes": null
+    }
+  ]
+}

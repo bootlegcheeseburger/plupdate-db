@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Wrangler
+node_modules/
+.wrangler/
+
+# Build artifacts from Pages
+db/_site/

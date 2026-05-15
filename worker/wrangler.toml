@@ -1,0 +1,16 @@
+name = "plupdate-submit"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Workers KV used for per-IP rate limiting.
+# Run once: `npx wrangler kv namespace create RATE_LIMIT` and paste the id below.
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Public env (not secret). Set the actual repo here once created.
+[vars]
+GITHUB_REPO = "REPLACE_WITH_OWNER/plupdate-submissions"
+
+# Secrets (set via CLI, never commit):
+#   npx wrangler secret put GITHUB_TOKEN

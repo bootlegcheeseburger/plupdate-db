@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://plupdate.dev/schema/vendor.json",
+  "title": "Plupdate Vendor File",
+  "description": "One file per vendor under vendors/<slug>.json. Slug must match filename.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["vendor", "plugins"],
+  "properties": {
+    "vendor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Display name of the vendor."
+    },
+    "homepage": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "Vendor's homepage. Optional but recommended."
+    },
+    "plugins": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/plugin" }
+    }
+  },
+  "$defs": {
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundleId", "name", "latestVersion"],
+      "properties": {
+        "bundleId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]+$",
+          "minLength": 3,
+          "maxLength": 200,
+          "description": "AAX bundle identifier as found in Info.plist (CFBundleIdentifier)."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "latestVersion": {
+          "type": "string",
+          "pattern": "^[0-9][0-9A-Za-z._-]*$",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "vendorPage": {
+          "type": ["string", "null"],
+          "format": "uri",
+          "maxLength": 500
+        },
+        "downloadURL": {
+          "type": ["string", "null"],
+          "format": "uri",
+          "maxLength": 500
+        },
+        "notes": {
+          "type": ["string", "null"],
+          "maxLength": 2000
+        },
+        "drm": {
+          "type": ["array", "null"],
+          "description": "Authorization methods accepted by this plugin. Multiple entries mean the plugin accepts any of them.",
+          "items": { "$ref": "#/$defs/drmMethod" }
+        }
+      }
+    },
+    "drmMethod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["ilok", "authfile", "serial", "login", "custom"]
+        },
+        "paths": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "notes": {
+          "type": ["string", "null"],
+          "maxLength": 500
+        }
+      }
+    }
+  }
+}

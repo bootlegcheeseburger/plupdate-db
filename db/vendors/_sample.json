@@ -1,0 +1,32 @@
+{
+  "vendor": "Acme Plugins",
+  "homepage": "https://example.invalid/acme",
+  "plugins": [
+    {
+      "bundleId": "com.acme.SuperReverb",
+      "name": "SuperReverb",
+      "latestVersion": "2.1.0",
+      "vendorPage": "https://example.invalid/acme/products/superreverb",
+      "downloadURL": "https://example.invalid/acme/downloads/SuperReverb-2.1.0.pkg",
+      "notes": null,
+      "drm": [
+        { "kind": "ilok" }
+      ]
+    },
+    {
+      "bundleId": "com.acme.MiniSynth",
+      "name": "Mini Synth",
+      "latestVersion": "1.4.2",
+      "vendorPage": "https://example.invalid/acme/products/minisynth",
+      "downloadURL": null,
+      "notes": "Bundle ID confirmed from Info.plist on 2026-01-15.",
+      "drm": [
+        {
+          "kind": "authfile",
+          "paths": ["~/Library/Application Support/Acme/license.dat"]
+        },
+        { "kind": "serial" }
+      ]
+    }
+  ]
+}

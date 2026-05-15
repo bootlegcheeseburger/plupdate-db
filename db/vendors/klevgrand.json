@@ -1,0 +1,22 @@
+{
+  "vendor": "Klevgrand",
+  "homepage": "https://klevgrand.com/",
+  "plugins": [
+    {
+      "bundleId": "com.klevgrand.Brusfri",
+      "name": "Brusfri",
+      "latestVersion": "1.2.2",
+      "vendorPage": "https://klevgrand.com/products/brusfri",
+      "downloadURL": "https://klevdata.klevgrand.com/plugins/brusfri/brusfri_1_2_2_macOS.dmg",
+      "notes": null
+    },
+    {
+      "bundleId": "com.klevgrand.LUXE",
+      "name": "LUXE",
+      "latestVersion": "1.1.3",
+      "vendorPage": "https://klevgrand.com/products/luxe",
+      "downloadURL": "https://klevdata.klevgrand.com/plugins/luxe/luxe_1_1_3_macOS.dmg",
+      "notes": null
+    }
+  ]
+}
