@@ -22,10 +22,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so validate.py can `git show <base>:<path>` to detect
+          # silent trustedDomain changes on existing vendor files.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: db/requirements.txt
       - run: pip install -r requirements.txt
-      - run: python scripts/validate.py
+      - name: Validate
+        env:
+          # PR: compare new file vs origin/<base>. Push: compare HEAD vs HEAD~1.
+          PLUPDATE_BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
+          # A maintainer who wants to allow a trustedDomain change adds the
+          # `domain-change-reviewed` label to the PR. Direct pushes to main
+          # cannot bypass this check.
+          PLUPDATE_ALLOW_DOMAIN_CHANGE: ${{ contains(github.event.pull_request.labels.*.name, 'domain-change-reviewed') && '1' || '0' }}
+        run: python scripts/validate.py

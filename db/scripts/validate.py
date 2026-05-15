@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -28,6 +30,91 @@ INDEX_FILE = VENDORS_DIR / "index.json"
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("validate")
 
+
+# --- trustedDomain change-lock --------------------------------------------
+
+def _check_trusted_domain_stability(name: str, slug: str, data: dict) -> int:
+    """Refuse silent changes to an existing vendor's trustedDomain.
+
+    Compares against the version of the file on PLUPDATE_BASE_REF (the
+    workflow points this at origin/<base> on PRs and HEAD~1 on direct pushes).
+    Skipped when PLUPDATE_BASE_REF is unset (e.g., local runs) or when
+    PLUPDATE_ALLOW_DOMAIN_CHANGE=1 is explicitly set (CI: add the
+    `domain-change-reviewed` label to the PR).
+    """
+    if os.environ.get("PLUPDATE_ALLOW_DOMAIN_CHANGE") == "1":
+        return 0
+    base_ref = os.environ.get("PLUPDATE_BASE_REF")
+    if not base_ref:
+        return 0
+    try:
+        result = subprocess.run(
+            ["git", "show", f"{base_ref}:db/vendors/{name}"],
+            capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return 0  # file isn't on base ref — brand new vendor file, allowed
+    try:
+        old = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return 0
+    old_td = old.get("trustedDomain")
+    new_td = data.get("trustedDomain")
+    if old_td and new_td and old_td != new_td:
+        log.error(
+            "%s: trustedDomain changed from %r to %r. Domain changes are "
+            "rare and high-stakes. If intentional, add the "
+            "`domain-change-reviewed` label to the PR (CI will then set "
+            "PLUPDATE_ALLOW_DOMAIN_CHANGE=1) before merging.",
+            name, old_td, new_td,
+        )
+        return 1
+    return 0
+
+
+# --- unicode hygiene -------------------------------------------------------
+
+# Bidi overrides + isolates: can render a string differently than its bytes.
+_BIDI_CHARS = {chr(c) for c in (
+    0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+    0x2066, 0x2067, 0x2068, 0x2069,
+)}
+# Zero-width chars: invisible, useful for homoglyph attacks.
+_ZERO_WIDTH = {chr(c) for c in (0x200B, 0x200C, 0x200D, 0xFEFF, 0x180E)}
+# C0/C1 control ranges + DEL.
+_CONTROL = {chr(c) for c in range(0x00, 0x20)} | {chr(0x7F)} | {chr(c) for c in range(0x80, 0xA0)}
+
+# Single-line fields disallow tab/LF/CR too.
+_BAD_SINGLE_LINE = _BIDI_CHARS | _ZERO_WIDTH | _CONTROL
+# Multi-line fields keep tab/LF/CR.
+_BAD_MULTI_LINE = _BAD_SINGLE_LINE - {"\t", "\n", "\r"}
+
+
+def _check_unicode_hygiene(name: str, data: dict) -> int:
+    errors = 0
+    errors += _check_string(name, "vendor", data.get("vendor"), _BAD_SINGLE_LINE)
+    for i, p in enumerate(data.get("plugins", [])):
+        loc = f"plugins/{i} ({p.get('bundleId', '?')})"
+        errors += _check_string(name, f"{loc}.name", p.get("name"), _BAD_SINGLE_LINE)
+        errors += _check_string(name, f"{loc}.notes", p.get("notes"), _BAD_MULTI_LINE)
+    return errors
+
+
+def _check_string(file: str, loc: str, value, banned: set) -> int:
+    if not isinstance(value, str) or not value:
+        return 0
+    found = sorted({hex(ord(c)) for c in value if c in banned})
+    if found:
+        log.error(
+            "%s: %s contains disallowed character(s): %s "
+            "(control / bidi / zero-width — likely an attempt to deceive)",
+            file, loc, ", ".join(found),
+        )
+        return 1
+    return 0
+
+
+# --- URL security ---------------------------------------------------------
 
 def _host_matches_domain(host: str, domain: str) -> bool:
     """True if host equals domain or is a proper subdomain.
@@ -175,6 +262,8 @@ def main() -> int:
                 seen_bundles[bid] = f.name
 
         errors += _check_url_security(f.name, data)
+        errors += _check_trusted_domain_stability(f.name, f.stem, data)
+        errors += _check_unicode_hygiene(f.name, data)
 
     # vendors/_sample.json — schema-only check so contributors copying from a
     # broken template don't waste their time. Excluded from uniqueness checks
