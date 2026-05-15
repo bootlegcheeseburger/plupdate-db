@@ -1,0 +1,39 @@
+# actions/labeler@v5 config. Path -> label.
+# Labels must exist; see scripts/bootstrap-labels.sh or the gh commands in
+# the PR setting up this file.
+
+data:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "db/vendors/**"
+
+scraper:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "db/scrapers/**"
+
+schema:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "db/schema.json"
+
+tooling:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "db/scripts/**"
+          - "db/requirements.txt"
+
+worker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "worker/**"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
