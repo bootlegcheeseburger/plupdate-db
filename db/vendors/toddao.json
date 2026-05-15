@@ -1,0 +1,15 @@
+{
+  "vendor": "toddao",
+  "homepage": "https://toddao.com/",
+  "trustedDomain": "toddao.com",
+  "plugins": [
+    {
+      "bundleId": "com.toddao.absentiadxaax",
+      "name": "Absentia DX",
+      "latestVersion": "3.4.7",
+      "vendorPage": null,
+      "downloadURL": null,
+      "notes": null
+    }
+  ]
+}
