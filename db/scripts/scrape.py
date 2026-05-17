@@ -272,6 +272,8 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", help="print, don't write")
     p.add_argument("--index-only", action="store_true",
                    help="skip scrapers; just rebuild vendors/index.json from disk")
+    p.add_argument("--log-out", help="write a structured per-run JSON log to this path",
+                   default=None)
     args = p.parse_args()
 
     if args.index_only:
@@ -285,9 +287,24 @@ def main() -> int:
             log.error("no scraper named %r", args.only)
             return 2
 
+    import time
+    run_started = datetime.now(timezone.utc)
     failures = 0
     classifications: dict[str, list[str]] = {"bumps": [], "structural": [], "unchanged": []}
+    # Per-vendor structured outcomes for the scrape log. Distinct from
+    # `classifications` (which feeds the PR-classification system).
+    run_records: list[dict] = []
     for s in scrapers:
+        rec_started = time.monotonic()
+        rec = {
+            "slug": s.name,
+            "strategy": None,        # filled in later if vendor declares one
+            "outcome": "skip",       # hit | miss | error | skip | unchanged
+            "releasesFound": 0,
+            "bumpsClassified": 0,
+            "durationMs": 0,
+            "error": None,
+        }
         # Honor the distribution mode:
         # - "scraper" (or omitted): normal scrape, canonical source.
         # - "portal": still scrape best-effort (changelogs, backup
@@ -301,6 +318,10 @@ def main() -> int:
         if dist == "manual":
             log.info("%s: distribution=manual — skipping scrape", s.name)
             classifications["unchanged"].append(s.name)
+            rec["outcome"] = "skip"
+            rec["error"] = "distribution=manual"
+            rec["durationMs"] = int((time.monotonic() - rec_started) * 1000)
+            run_records.append(rec)
             continue
         if dist == "portal":
             log.info("%s: distribution=portal — scraping best-effort (supplementary)", s.name)
@@ -313,6 +334,10 @@ def main() -> int:
         except Exception as e:
             log.error("%s: %s", s.name, e)
             failures += 1
+            rec["outcome"] = "error"
+            rec["error"] = str(e)
+            rec["durationMs"] = int((time.monotonic() - rec_started) * 1000)
+            run_records.append(rec)
             continue
         # No releases is fine when every plugin in this vendor is
         # manual/skip-overridden (e.g. a portal vendor whose web scrape
@@ -320,9 +345,33 @@ def main() -> int:
         # entries.
         if not releases and not s._plugin_source_overrides:
             log.warning("%s: no releases scraped (skipping write)", s.name)
+            rec["outcome"] = "miss"
+            rec["error"] = "no releases scraped"
+            rec["durationMs"] = int((time.monotonic() - rec_started) * 1000)
+            run_records.append(rec)
             continue
         kind = write_vendor_file(s, releases, args.dry_run)
         classifications.setdefault(kind, []).append(s.name)
+        rec["outcome"] = "hit"
+        rec["releasesFound"] = len(releases)
+        rec["bumpsClassified"] = 1 if kind == "bumps" else 0
+        rec["durationMs"] = int((time.monotonic() - rec_started) * 1000)
+        run_records.append(rec)
+
+    # Emit structured scrape log if requested. Workflow uses --log-out to
+    # capture the blob and POST it to the Worker /admin/scrape-log-ingest
+    # endpoint with SCRAPE_INGEST_TOKEN.
+    if args.log_out:
+        run_completed = datetime.now(timezone.utc)
+        payload = {
+            "runId": run_started.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "startedAt": run_started.isoformat(),
+            "completedAt": run_completed.isoformat(),
+            "totalVendors": len(run_records),
+            "vendors": run_records,
+        }
+        Path(args.log_out).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        log.info("wrote scrape log -> %s", args.log_out)
 
     if not args.dry_run:
         # Index changes (slug add/remove) are structural; updatedAt alone is fine.

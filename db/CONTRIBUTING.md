@@ -51,3 +51,31 @@ Full spec in [`schema.json`](schema.json). The points that trip people up:
 - Personal forks of vendor data.
 - Speculative bundle IDs that haven't been confirmed by inspection.
 - Affiliate or tracking URLs.
+
+## Choosing a strategy
+
+New vendor scrapers should prefer a strategy over hand-rolled HTML
+parsing. Each strategy is a single function in
+`db/scrapers/strategies/`, yielding `ScrapedRelease` objects. Pick the
+one that matches the vendor's site shape; fail loudly with
+`StrategyMiss` when the expected shape isn't present (the runner
+records that outcome in the structured scrape log).
+
+| Strategy | Use when… | Example |
+|---|---|---|
+| `manifest`  | Vendor publishes a JSON file with the schema's `plugins[]` shape at a stable URL. | T1 aspirational; rare today. |
+| `appcast`   | Vendor ships a Sparkle XML appcast feed. | iLok License Manager, some big-vendor desktop apps. |
+| `jsonld`    | Product page has `<script type="application/ld+json">` with `SoftwareApplication` / `Product`. | Most modern e-commerce vendor sites. |
+| `sitemap`   | Many products under a consistent URL pattern; no single combined downloads page. | Big catalog vendors. |
+| `github_releases` | Source lives on GitHub. | Open-source plugins. |
+| `regex_extract` | Boutique site, bespoke HTML. The fallback. | Most AAX vendors today. |
+
+For the canonical example, see `scrapers/_sample_strategy.py`. For
+existing bespoke scrapers (klevgrand, oeksound, liquidsonics,
+soundradix), the regex pattern they implement directly is still the
+right call — the strategy library is opt-in for new vendors, not a
+forced migration.
+
+The scaffold CLI (`just scaffold-vendor`) picks the best strategy
+automatically based on what the prep endpoint detected on the
+vendor's homepage.
