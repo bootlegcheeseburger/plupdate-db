@@ -191,15 +191,18 @@ SCRAPERS_DIR = ROOT / "scrapers"
 
 
 def _check_distribution(name: str, slug: str, data: dict) -> int:
-    """Distribution mode must match scraper presence + portal metadata.
+    """Distribution mode must align with scraper presence + portal metadata.
 
     - "scraper" (or omitted): db/scrapers/<slug>.py MUST exist.
-    - "portal": db/scrapers/<slug>.py MUST NOT exist; data.portal MUST exist.
-    - "manual": db/scrapers/<slug>.py MUST NOT exist.
+    - "portal": data.portal MUST exist. A scraper is OPTIONAL — many
+        portal-distributed vendors still publish changelogs or product
+        pages worth a best-effort scrape (used as supplementary signal;
+        the portal app remains canonical).
+    - "manual": db/scrapers/<slug>.py MUST NOT exist (the maintainer
+        tracks updates by hand; no automation expected).
 
-    Catches accidental orphan scraper files when a vendor switches to a
-    portal app, and refuses portal vendors that forget to declare which
-    portal app users need.
+    Refuses portal vendors that forget to declare which portal app users
+    need, and orphan scraper files on manual-tracked vendors.
     """
     dist = data.get("distribution") or "scraper"
     scraper_file = SCRAPERS_DIR / f"{slug}.py"
@@ -213,21 +216,24 @@ def _check_distribution(name: str, slug: str, data: dict) -> int:
                 name, scraper_file.relative_to(ROOT.parent),
             )
             errors += 1
-    else:
+    elif dist == "manual":
         if has_scraper:
             log.error(
-                "%s: distribution=%r but %s still exists. "
-                "Remove the orphan scraper file when switching distribution mode.",
-                name, dist, scraper_file.relative_to(ROOT.parent),
+                "%s: distribution='manual' but %s still exists. "
+                "Remove the orphan scraper file or switch distribution to 'scraper' / 'portal'.",
+                name, scraper_file.relative_to(ROOT.parent),
             )
             errors += 1
-        if dist == "portal" and not data.get("portal"):
+    elif dist == "portal":
+        if not data.get("portal"):
             log.error(
                 "%s: distribution='portal' requires a 'portal' object with at "
                 "least a 'name' field (e.g. 'iZotope Product Portal').",
                 name,
             )
             errors += 1
+        # A scraper is allowed (best-effort supplementary signal) — no
+        # error either way.
     return errors
 
 

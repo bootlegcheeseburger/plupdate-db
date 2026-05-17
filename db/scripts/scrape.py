@@ -204,16 +204,22 @@ def main() -> int:
     failures = 0
     classifications: dict[str, list[str]] = {"bumps": [], "structural": [], "unchanged": []}
     for s in scrapers:
-        # Skip vendors that explicitly opted out of scraping in their JSON
-        # (distribution='portal' or 'manual'). Validator already enforces
-        # that such vendors don't have a scraper file, but a stale
-        # registry could still try to run one — defense in depth.
+        # Honor the distribution mode:
+        # - "scraper" (or omitted): normal scrape, canonical source.
+        # - "portal": still scrape best-effort (changelogs, backup
+        #   download links) but treat output as supplementary — the
+        #   portal app is canonical. We don't currently differentiate
+        #   in behavior here, but log the mode so the structured scrape
+        #   log (Step 3) can mark these results as supplementary.
+        # - "manual": maintainer-tracked, skip entirely.
         meta = _existing_vendor_meta(s.name)
         dist = meta.get("distribution") or "scraper"
-        if dist != "scraper":
-            log.info("%s: distribution=%s — skipping scrape", s.name, dist)
+        if dist == "manual":
+            log.info("%s: distribution=manual — skipping scrape", s.name)
             classifications["unchanged"].append(s.name)
             continue
+        if dist == "portal":
+            log.info("%s: distribution=portal — scraping best-effort (supplementary)", s.name)
         try:
             releases = list(s.scrape())
         except Exception as e:
