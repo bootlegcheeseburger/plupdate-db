@@ -30,14 +30,26 @@ jobs:
         working-directory: db
         run: |
           if [ -n "${{ inputs.only }}" ]; then
-            python -m scripts.scrape --only "${{ inputs.only }}"
+            python -m scripts.scrape --only "${{ inputs.only }}" --log-out ../scrape-log.json
           else
-            python -m scripts.scrape
+            python -m scripts.scrape --log-out ../scrape-log.json
           fi
 
       - name: Validate
         working-directory: db
         run: python scripts/validate.py
+
+      - name: Ingest structured scrape log
+        if: hashFiles('scrape-log.json') != '' && env.PLUPDATE_INGEST_URL != '' && env.SCRAPE_INGEST_TOKEN != ''
+        env:
+          PLUPDATE_INGEST_URL: ${{ secrets.PLUPDATE_INGEST_URL }}
+          SCRAPE_INGEST_TOKEN: ${{ secrets.SCRAPE_INGEST_TOKEN }}
+        run: |
+          curl -fsS -X POST "$PLUPDATE_INGEST_URL/admin/scrape-log-ingest" \
+            -H "Authorization: Bearer $SCRAPE_INGEST_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @scrape-log.json \
+            || echo "scrape-log ingest failed (non-fatal)"
 
       - name: Classify diff
         id: classify

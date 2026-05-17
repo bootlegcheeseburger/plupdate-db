@@ -162,6 +162,17 @@ def _check_url_security(name: str, data: dict) -> int:
         if vp:
             errors += _check_vendor_page_url(name, loc, vp, trusted)
 
+        # source.url has the same host requirements as vendorPage: must
+        # live on the trusted domain (or, for portal vendors, an
+        # allowedDownloadHosts entry — same exception as vendorPage).
+        src = p.get("source")
+        if isinstance(src, dict):
+            su = src.get("url")
+            if su:
+                errors += _check_vendor_page_url(
+                    name, f"{loc}.source.url", su, trusted,
+                )
+
     return errors
 
 
@@ -182,6 +193,58 @@ def _check_vendor_page_url(name: str, loc: str, url: str, trusted: str) -> int:
             name, loc, host, trusted,
         )
         errors += 1
+    return errors
+
+
+# --- distribution / portal coherence -------------------------------------
+
+SCRAPERS_DIR = ROOT / "scrapers"
+
+
+def _check_distribution(name: str, slug: str, data: dict) -> int:
+    """Distribution mode must align with scraper presence + portal metadata.
+
+    - "scraper" (or omitted): db/scrapers/<slug>.py MUST exist.
+    - "portal": data.portal MUST exist. A scraper is OPTIONAL — many
+        portal-distributed vendors still publish changelogs or product
+        pages worth a best-effort scrape (used as supplementary signal;
+        the portal app remains canonical).
+    - "manual": db/scrapers/<slug>.py MUST NOT exist (the maintainer
+        tracks updates by hand; no automation expected).
+
+    Refuses portal vendors that forget to declare which portal app users
+    need, and orphan scraper files on manual-tracked vendors.
+    """
+    dist = data.get("distribution") or "scraper"
+    scraper_file = SCRAPERS_DIR / f"{slug}.py"
+    has_scraper = scraper_file.exists()
+    errors = 0
+    if dist == "scraper":
+        if not has_scraper:
+            log.error(
+                "%s: distribution='scraper' (or omitted) but %s does not exist. "
+                "Either add a scraper or set distribution to 'portal'/'manual'.",
+                name, scraper_file.relative_to(ROOT.parent),
+            )
+            errors += 1
+    elif dist == "manual":
+        if has_scraper:
+            log.error(
+                "%s: distribution='manual' but %s still exists. "
+                "Remove the orphan scraper file or switch distribution to 'scraper' / 'portal'.",
+                name, scraper_file.relative_to(ROOT.parent),
+            )
+            errors += 1
+    elif dist == "portal":
+        if not data.get("portal"):
+            log.error(
+                "%s: distribution='portal' requires a 'portal' object with at "
+                "least a 'name' field (e.g. 'iZotope Product Portal').",
+                name,
+            )
+            errors += 1
+        # A scraper is allowed (best-effort supplementary signal) — no
+        # error either way.
     return errors
 
 
@@ -233,6 +296,7 @@ def main() -> int:
         errors += _check_url_security(f.name, data)
         errors += _check_trusted_domain_stability(f.name, f.stem, data)
         errors += _check_unicode_hygiene(f.name, data)
+        errors += _check_distribution(f.name, f.stem, data)
 
     # vendors/_sample.json — schema-only check so contributors copying from a
     # broken template don't waste their time. Excluded from uniqueness checks

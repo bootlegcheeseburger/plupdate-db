@@ -48,6 +48,59 @@ def _normalize_url(u):
 
 # --- vendor files ---------------------------------------------------------
 
+def _existing_vendor_meta(slug: str) -> dict:
+    """Read fields we want to preserve across scrape runs (distribution,
+    portal). The scraper itself doesn't emit these — they're maintainer-
+    set, so we read them from the on-disk vendor JSON and re-emit them
+    after the scrape rebuilds the file.
+    """
+    f = VENDORS_DIR / f"{slug}.json"
+    if not f.exists():
+        return {}
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    out = {}
+    if "distribution" in data:
+        out["distribution"] = data["distribution"]
+    if "portal" in data:
+        out["portal"] = data["portal"]
+    return out
+
+
+def _existing_plugin_sources(slug: str) -> dict[str, dict]:
+    """Map of bundleId -> existing plugin dict for plugins that declare a
+    `source` override. Used by the runner to honor `manual` / `skip` /
+    `appcast` plugin overrides and to detect URL overrides for `scraper`
+    kind. Plugins without `source` aren't in the returned map.
+    """
+    f = VENDORS_DIR / f"{slug}.json"
+    if not f.exists():
+        return {}
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    out = {}
+    for p in data.get("plugins", []):
+        if isinstance(p.get("source"), dict):
+            out[p["bundleId"]] = p
+    return out
+
+
+def _release_to_plugin(r) -> dict:
+    return {
+        "bundleId": r.bundle_id,
+        "name": r.name,
+        "latestVersion": r.latest_version,
+        "vendorPage": _normalize_url(r.vendor_page),
+        "downloadURL": _normalize_url(r.download_url),
+        "notes": r.notes,
+        "drm": r.drm,
+    }
+
+
 def vendor_payload(scraper, releases: list) -> dict:
     payload: dict = {
         "vendor": scraper.vendor,
@@ -60,18 +113,74 @@ def vendor_payload(scraper, releases: list) -> dict:
     team_id = getattr(scraper, "signing_team_id", None)
     if team_id:
         payload["signingTeamId"] = team_id
-    payload["plugins"] = [
-            {
-                "bundleId": r.bundle_id,
-                "name": r.name,
-                "latestVersion": r.latest_version,
-                "vendorPage": _normalize_url(r.vendor_page),
-                "downloadURL": _normalize_url(r.download_url),
-                "notes": r.notes,
-                "drm": r.drm,
-            }
-            for r in sorted(releases, key=lambda r: r.name.lower())
-        ]
+    # Preserve maintainer-set distribution metadata across scrape runs.
+    # Without this, every scrape would silently strip portal/manual
+    # markers and the file would fall back to default ('scraper').
+    payload.update(_existing_vendor_meta(scraper.name))
+
+    # Per-plugin source overrides (manual / skip / scraper-with-url /
+    # appcast). The runner caller passes the existing source map in via
+    # scraper._plugin_source_overrides if any are applicable; we honor
+    # them by either preserving the existing plugin entry or running a
+    # targeted scrape_one call for URL overrides.
+    overrides = getattr(scraper, "_plugin_source_overrides", {}) or {}
+
+    by_id: dict[str, dict] = {}
+    for r in releases:
+        by_id[r.bundle_id] = _release_to_plugin(r)
+
+    # Apply preserved entries for manual/skip plugins, and re-scrape
+    # entries for scraper-kind URL overrides.
+    for bid, existing in overrides.items():
+        kind = (existing.get("source") or {}).get("kind", "scraper")
+        if kind in ("manual", "skip"):
+            # Keep the on-disk version verbatim; the scraper output (if
+            # any) is ignored for this plugin.
+            by_id[bid] = {k: existing.get(k) for k in (
+                "bundleId", "name", "latestVersion", "vendorPage",
+                "downloadURL", "notes", "drm",
+            ) if k in existing}
+        elif kind == "scraper":
+            url_override = (existing.get("source") or {}).get("url")
+            if url_override:
+                try:
+                    scrape_one = getattr(scraper, "scrape_one", None)
+                    if callable(scrape_one):
+                        r = scrape_one(bid, url_override)
+                    else:
+                        from scrapers.base import default_scrape_one
+                        r = default_scrape_one(scraper, bid, url_override)
+                    if r is not None:
+                        by_id[bid] = _release_to_plugin(r)
+                except Exception as e:
+                    log.warning(
+                        "%s: scrape_one(%s) failed (%s) — keeping existing entry",
+                        scraper.name, bid, e,
+                    )
+                    by_id[bid] = {k: existing.get(k) for k in (
+                        "bundleId", "name", "latestVersion", "vendorPage",
+                        "downloadURL", "notes", "drm",
+                    ) if k in existing}
+        elif kind == "appcast":
+            log.warning(
+                "%s: appcast source for %s — appcast strategy not yet wired; keeping existing entry",
+                scraper.name, bid,
+            )
+            by_id[bid] = {k: existing.get(k) for k in (
+                "bundleId", "name", "latestVersion", "vendorPage",
+                "downloadURL", "notes", "drm",
+            ) if k in existing}
+
+    # Re-attach `source` to plugins that had one. The scraper output
+    # itself never emits `source` — it's maintainer-set metadata.
+    for bid, p in by_id.items():
+        if bid in overrides:
+            p["source"] = overrides[bid].get("source")
+
+    payload["plugins"] = sorted(
+        by_id.values(),
+        key=lambda p: (p.get("name") or "").lower(),
+    )
     return payload
 
 
@@ -163,6 +272,8 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", help="print, don't write")
     p.add_argument("--index-only", action="store_true",
                    help="skip scrapers; just rebuild vendors/index.json from disk")
+    p.add_argument("--log-out", help="write a structured per-run JSON log to this path",
+                   default=None)
     args = p.parse_args()
 
     if args.index_only:
@@ -176,20 +287,91 @@ def main() -> int:
             log.error("no scraper named %r", args.only)
             return 2
 
+    import time
+    run_started = datetime.now(timezone.utc)
     failures = 0
     classifications: dict[str, list[str]] = {"bumps": [], "structural": [], "unchanged": []}
+    # Per-vendor structured outcomes for the scrape log. Distinct from
+    # `classifications` (which feeds the PR-classification system).
+    run_records: list[dict] = []
     for s in scrapers:
+        rec_started = time.monotonic()
+        rec = {
+            "slug": s.name,
+            "strategy": None,        # filled in later if vendor declares one
+            "outcome": "skip",       # hit | miss | error | skip | unchanged
+            "releasesFound": 0,
+            "bumpsClassified": 0,
+            "durationMs": 0,
+            "error": None,
+        }
+        # Honor the distribution mode:
+        # - "scraper" (or omitted): normal scrape, canonical source.
+        # - "portal": still scrape best-effort (changelogs, backup
+        #   download links) but treat output as supplementary — the
+        #   portal app is canonical. We don't currently differentiate
+        #   in behavior here, but log the mode so the structured scrape
+        #   log (Step 3) can mark these results as supplementary.
+        # - "manual": maintainer-tracked, skip entirely.
+        meta = _existing_vendor_meta(s.name)
+        dist = meta.get("distribution") or "scraper"
+        if dist == "manual":
+            log.info("%s: distribution=manual — skipping scrape", s.name)
+            classifications["unchanged"].append(s.name)
+            rec["outcome"] = "skip"
+            rec["error"] = "distribution=manual"
+            rec["durationMs"] = int((time.monotonic() - rec_started) * 1000)
+            run_records.append(rec)
+            continue
+        if dist == "portal":
+            log.info("%s: distribution=portal — scraping best-effort (supplementary)", s.name)
+        # Per-plugin source overrides are attached as a private attr on
+        # the scraper instance for vendor_payload to consult. Avoids
+        # changing the Scraper Protocol surface.
+        s._plugin_source_overrides = _existing_plugin_sources(s.name)
         try:
             releases = list(s.scrape())
         except Exception as e:
             log.error("%s: %s", s.name, e)
             failures += 1
+            rec["outcome"] = "error"
+            rec["error"] = str(e)
+            rec["durationMs"] = int((time.monotonic() - rec_started) * 1000)
+            run_records.append(rec)
             continue
-        if not releases:
+        # No releases is fine when every plugin in this vendor is
+        # manual/skip-overridden (e.g. a portal vendor whose web scrape
+        # returns nothing). The override merge will preserve existing
+        # entries.
+        if not releases and not s._plugin_source_overrides:
             log.warning("%s: no releases scraped (skipping write)", s.name)
+            rec["outcome"] = "miss"
+            rec["error"] = "no releases scraped"
+            rec["durationMs"] = int((time.monotonic() - rec_started) * 1000)
+            run_records.append(rec)
             continue
         kind = write_vendor_file(s, releases, args.dry_run)
         classifications.setdefault(kind, []).append(s.name)
+        rec["outcome"] = "hit"
+        rec["releasesFound"] = len(releases)
+        rec["bumpsClassified"] = 1 if kind == "bumps" else 0
+        rec["durationMs"] = int((time.monotonic() - rec_started) * 1000)
+        run_records.append(rec)
+
+    # Emit structured scrape log if requested. Workflow uses --log-out to
+    # capture the blob and POST it to the Worker /admin/scrape-log-ingest
+    # endpoint with SCRAPE_INGEST_TOKEN.
+    if args.log_out:
+        run_completed = datetime.now(timezone.utc)
+        payload = {
+            "runId": run_started.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "startedAt": run_started.isoformat(),
+            "completedAt": run_completed.isoformat(),
+            "totalVendors": len(run_records),
+            "vendors": run_records,
+        }
+        Path(args.log_out).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        log.info("wrote scrape log -> %s", args.log_out)
 
     if not args.dry_run:
         # Index changes (slug add/remove) are structural; updatedAt alone is fine.

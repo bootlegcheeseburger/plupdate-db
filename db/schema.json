@@ -27,6 +27,31 @@
       "pattern": "^[A-Z0-9]{10}$",
       "description": "Apple Developer Team ID expected to sign every plugin from this vendor (10 uppercase alphanumeric chars). When present, the app verifies the installed plugin's code signature and warns on mismatch. Maintainer-curated; do not set unless you've inspected an installed binary."
     },
+    "distribution": {
+      "type": "string",
+      "enum": ["scraper", "portal", "manual"],
+      "description": "How the vendor publishes plugin updates. 'scraper' (default if omitted) means we crawl their website via db/scrapers/<slug>.py. 'portal' means the vendor uses a proprietary updater app (iZotope Product Portal, Waves Central, Flux:: Center, etc.) and crowdsource submissions become the source of truth. 'manual' means the maintainer tracks updates by hand. When non-scraper, the scrape runner skips this vendor and the admin panel suppresses the missing-scraper warning."
+    },
+    "portal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Display name of the portal app (e.g. 'iZotope Product Portal')."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 500,
+          "description": "Link where users can download / learn about the portal."
+        }
+      },
+      "description": "Portal app metadata. Required when distribution = 'portal'."
+    },
     "plugins": {
       "type": "array",
       "minItems": 1,
@@ -70,6 +95,30 @@
           "type": ["array", "null"],
           "description": "Authorization methods accepted by this plugin. Multiple entries mean the plugin accepts any of them.",
           "items": { "$ref": "#/$defs/drmMethod" }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["scraper", "manual", "appcast", "skip"],
+              "description": "Per-plugin source override. 'scraper' uses the vendor's scraper with the optional URL override below. 'manual' / 'skip' preserve the maintainer-set latestVersion across scrape runs (used for outlier plugins the vendor moved off the main page, or removed from automation). 'appcast' invokes the generic Sparkle handler (strategies/appcast.py)."
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "maxLength": 500,
+              "description": "URL override for this plugin only. Required for 'appcast'. Optional for 'scraper' (when the plugin lives on a non-default URL). Must be on trustedDomain (or in vendor's allowedDownloadHosts) unless the vendor is portal-distributed."
+            },
+            "regex": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Optional version-extraction regex for the override URL."
+            }
+          },
+          "description": "Optional override for how this single plugin's version is scraped. When absent, the vendor's default scraper handles it. Used for outlier plugins (e.g., a single product whose page structure differs from siblings) and for plugins the maintainer wants to opt out of automated scraping."
         }
       }
     },
