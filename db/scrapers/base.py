@@ -43,6 +43,24 @@ class Scraper(Protocol):
     signing_team_id: Optional[str]
     def scrape(self) -> Iterable[ScrapedRelease]: ...
 
+    # Optional per-plugin override. The runner calls this when a plugin in
+    # the existing vendor JSON has `source.kind == "scraper"` with a URL
+    # override (e.g. an outlier product page that differs from siblings).
+    # Default implementation runs scrape() and filters; override when a
+    # vendor has cheap per-product fetching to skip the full crawl.
+    def scrape_one(self, bundle_id: str, url: Optional[str] = None) -> Optional[ScrapedRelease]: ...
+
+
+def default_scrape_one(scraper: "Scraper", bundle_id: str, url: Optional[str] = None) -> Optional[ScrapedRelease]:
+    """Default scrape_one helper: filters scrape() by bundle_id, ignores url
+    override. Use as the fallback in the runner when a Scraper doesn't
+    implement scrape_one().
+    """
+    for r in scraper.scrape():
+        if r.bundle_id == bundle_id:
+            return r
+    return None
+
 
 def fetch(url: str) -> str:
     resp = requests.get(

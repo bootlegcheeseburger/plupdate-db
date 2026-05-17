@@ -162,6 +162,17 @@ def _check_url_security(name: str, data: dict) -> int:
         if vp:
             errors += _check_vendor_page_url(name, loc, vp, trusted)
 
+        # source.url has the same host requirements as vendorPage: must
+        # live on the trusted domain (or, for portal vendors, an
+        # allowedDownloadHosts entry — same exception as vendorPage).
+        src = p.get("source")
+        if isinstance(src, dict):
+            su = src.get("url")
+            if su:
+                errors += _check_vendor_page_url(
+                    name, f"{loc}.source.url", su, trusted,
+                )
+
     return errors
 
 

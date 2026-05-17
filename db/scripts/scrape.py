@@ -69,6 +69,38 @@ def _existing_vendor_meta(slug: str) -> dict:
     return out
 
 
+def _existing_plugin_sources(slug: str) -> dict[str, dict]:
+    """Map of bundleId -> existing plugin dict for plugins that declare a
+    `source` override. Used by the runner to honor `manual` / `skip` /
+    `appcast` plugin overrides and to detect URL overrides for `scraper`
+    kind. Plugins without `source` aren't in the returned map.
+    """
+    f = VENDORS_DIR / f"{slug}.json"
+    if not f.exists():
+        return {}
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    out = {}
+    for p in data.get("plugins", []):
+        if isinstance(p.get("source"), dict):
+            out[p["bundleId"]] = p
+    return out
+
+
+def _release_to_plugin(r) -> dict:
+    return {
+        "bundleId": r.bundle_id,
+        "name": r.name,
+        "latestVersion": r.latest_version,
+        "vendorPage": _normalize_url(r.vendor_page),
+        "downloadURL": _normalize_url(r.download_url),
+        "notes": r.notes,
+        "drm": r.drm,
+    }
+
+
 def vendor_payload(scraper, releases: list) -> dict:
     payload: dict = {
         "vendor": scraper.vendor,
@@ -85,18 +117,70 @@ def vendor_payload(scraper, releases: list) -> dict:
     # Without this, every scrape would silently strip portal/manual
     # markers and the file would fall back to default ('scraper').
     payload.update(_existing_vendor_meta(scraper.name))
-    payload["plugins"] = [
-            {
-                "bundleId": r.bundle_id,
-                "name": r.name,
-                "latestVersion": r.latest_version,
-                "vendorPage": _normalize_url(r.vendor_page),
-                "downloadURL": _normalize_url(r.download_url),
-                "notes": r.notes,
-                "drm": r.drm,
-            }
-            for r in sorted(releases, key=lambda r: r.name.lower())
-        ]
+
+    # Per-plugin source overrides (manual / skip / scraper-with-url /
+    # appcast). The runner caller passes the existing source map in via
+    # scraper._plugin_source_overrides if any are applicable; we honor
+    # them by either preserving the existing plugin entry or running a
+    # targeted scrape_one call for URL overrides.
+    overrides = getattr(scraper, "_plugin_source_overrides", {}) or {}
+
+    by_id: dict[str, dict] = {}
+    for r in releases:
+        by_id[r.bundle_id] = _release_to_plugin(r)
+
+    # Apply preserved entries for manual/skip plugins, and re-scrape
+    # entries for scraper-kind URL overrides.
+    for bid, existing in overrides.items():
+        kind = (existing.get("source") or {}).get("kind", "scraper")
+        if kind in ("manual", "skip"):
+            # Keep the on-disk version verbatim; the scraper output (if
+            # any) is ignored for this plugin.
+            by_id[bid] = {k: existing.get(k) for k in (
+                "bundleId", "name", "latestVersion", "vendorPage",
+                "downloadURL", "notes", "drm",
+            ) if k in existing}
+        elif kind == "scraper":
+            url_override = (existing.get("source") or {}).get("url")
+            if url_override:
+                try:
+                    scrape_one = getattr(scraper, "scrape_one", None)
+                    if callable(scrape_one):
+                        r = scrape_one(bid, url_override)
+                    else:
+                        from scrapers.base import default_scrape_one
+                        r = default_scrape_one(scraper, bid, url_override)
+                    if r is not None:
+                        by_id[bid] = _release_to_plugin(r)
+                except Exception as e:
+                    log.warning(
+                        "%s: scrape_one(%s) failed (%s) — keeping existing entry",
+                        scraper.name, bid, e,
+                    )
+                    by_id[bid] = {k: existing.get(k) for k in (
+                        "bundleId", "name", "latestVersion", "vendorPage",
+                        "downloadURL", "notes", "drm",
+                    ) if k in existing}
+        elif kind == "appcast":
+            log.warning(
+                "%s: appcast source for %s — appcast strategy not yet wired; keeping existing entry",
+                scraper.name, bid,
+            )
+            by_id[bid] = {k: existing.get(k) for k in (
+                "bundleId", "name", "latestVersion", "vendorPage",
+                "downloadURL", "notes", "drm",
+            ) if k in existing}
+
+    # Re-attach `source` to plugins that had one. The scraper output
+    # itself never emits `source` — it's maintainer-set metadata.
+    for bid, p in by_id.items():
+        if bid in overrides:
+            p["source"] = overrides[bid].get("source")
+
+    payload["plugins"] = sorted(
+        by_id.values(),
+        key=lambda p: (p.get("name") or "").lower(),
+    )
     return payload
 
 
@@ -220,13 +304,21 @@ def main() -> int:
             continue
         if dist == "portal":
             log.info("%s: distribution=portal — scraping best-effort (supplementary)", s.name)
+        # Per-plugin source overrides are attached as a private attr on
+        # the scraper instance for vendor_payload to consult. Avoids
+        # changing the Scraper Protocol surface.
+        s._plugin_source_overrides = _existing_plugin_sources(s.name)
         try:
             releases = list(s.scrape())
         except Exception as e:
             log.error("%s: %s", s.name, e)
             failures += 1
             continue
-        if not releases:
+        # No releases is fine when every plugin in this vendor is
+        # manual/skip-overridden (e.g. a portal vendor whose web scrape
+        # returns nothing). The override merge will preserve existing
+        # entries.
+        if not releases and not s._plugin_source_overrides:
             log.warning("%s: no releases scraped (skipping write)", s.name)
             continue
         kind = write_vendor_file(s, releases, args.dry_run)
