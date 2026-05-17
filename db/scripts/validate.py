@@ -185,6 +185,52 @@ def _check_vendor_page_url(name: str, loc: str, url: str, trusted: str) -> int:
     return errors
 
 
+# --- distribution / portal coherence -------------------------------------
+
+SCRAPERS_DIR = ROOT / "scrapers"
+
+
+def _check_distribution(name: str, slug: str, data: dict) -> int:
+    """Distribution mode must match scraper presence + portal metadata.
+
+    - "scraper" (or omitted): db/scrapers/<slug>.py MUST exist.
+    - "portal": db/scrapers/<slug>.py MUST NOT exist; data.portal MUST exist.
+    - "manual": db/scrapers/<slug>.py MUST NOT exist.
+
+    Catches accidental orphan scraper files when a vendor switches to a
+    portal app, and refuses portal vendors that forget to declare which
+    portal app users need.
+    """
+    dist = data.get("distribution") or "scraper"
+    scraper_file = SCRAPERS_DIR / f"{slug}.py"
+    has_scraper = scraper_file.exists()
+    errors = 0
+    if dist == "scraper":
+        if not has_scraper:
+            log.error(
+                "%s: distribution='scraper' (or omitted) but %s does not exist. "
+                "Either add a scraper or set distribution to 'portal'/'manual'.",
+                name, scraper_file.relative_to(ROOT.parent),
+            )
+            errors += 1
+    else:
+        if has_scraper:
+            log.error(
+                "%s: distribution=%r but %s still exists. "
+                "Remove the orphan scraper file when switching distribution mode.",
+                name, dist, scraper_file.relative_to(ROOT.parent),
+            )
+            errors += 1
+        if dist == "portal" and not data.get("portal"):
+            log.error(
+                "%s: distribution='portal' requires a 'portal' object with at "
+                "least a 'name' field (e.g. 'iZotope Product Portal').",
+                name,
+            )
+            errors += 1
+    return errors
+
+
 def main() -> int:
     schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
     validator = Draft202012Validator(schema)
@@ -233,6 +279,7 @@ def main() -> int:
         errors += _check_url_security(f.name, data)
         errors += _check_trusted_domain_stability(f.name, f.stem, data)
         errors += _check_unicode_hygiene(f.name, data)
+        errors += _check_distribution(f.name, f.stem, data)
 
     # vendors/_sample.json — schema-only check so contributors copying from a
     # broken template don't waste their time. Excluded from uniqueness checks

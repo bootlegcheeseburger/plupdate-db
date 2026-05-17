@@ -48,6 +48,27 @@ def _normalize_url(u):
 
 # --- vendor files ---------------------------------------------------------
 
+def _existing_vendor_meta(slug: str) -> dict:
+    """Read fields we want to preserve across scrape runs (distribution,
+    portal). The scraper itself doesn't emit these — they're maintainer-
+    set, so we read them from the on-disk vendor JSON and re-emit them
+    after the scrape rebuilds the file.
+    """
+    f = VENDORS_DIR / f"{slug}.json"
+    if not f.exists():
+        return {}
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    out = {}
+    if "distribution" in data:
+        out["distribution"] = data["distribution"]
+    if "portal" in data:
+        out["portal"] = data["portal"]
+    return out
+
+
 def vendor_payload(scraper, releases: list) -> dict:
     payload: dict = {
         "vendor": scraper.vendor,
@@ -60,6 +81,10 @@ def vendor_payload(scraper, releases: list) -> dict:
     team_id = getattr(scraper, "signing_team_id", None)
     if team_id:
         payload["signingTeamId"] = team_id
+    # Preserve maintainer-set distribution metadata across scrape runs.
+    # Without this, every scrape would silently strip portal/manual
+    # markers and the file would fall back to default ('scraper').
+    payload.update(_existing_vendor_meta(scraper.name))
     payload["plugins"] = [
             {
                 "bundleId": r.bundle_id,
@@ -179,6 +204,16 @@ def main() -> int:
     failures = 0
     classifications: dict[str, list[str]] = {"bumps": [], "structural": [], "unchanged": []}
     for s in scrapers:
+        # Skip vendors that explicitly opted out of scraping in their JSON
+        # (distribution='portal' or 'manual'). Validator already enforces
+        # that such vendors don't have a scraper file, but a stale
+        # registry could still try to run one — defense in depth.
+        meta = _existing_vendor_meta(s.name)
+        dist = meta.get("distribution") or "scraper"
+        if dist != "scraper":
+            log.info("%s: distribution=%s — skipping scrape", s.name, dist)
+            classifications["unchanged"].append(s.name)
+            continue
         try:
             releases = list(s.scrape())
         except Exception as e:
